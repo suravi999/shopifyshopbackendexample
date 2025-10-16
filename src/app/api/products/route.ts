@@ -35,8 +35,8 @@ type Product = {
   cooking_method: string;
   nutritional_info: string;
   review_rating: number;
-  content: any[]; // keep shape-compatible with bundles
-  media: any[];
+  content: unknown[]; // keep shape-compatible with bundles
+  media: unknown[];
   tag: string[];
   card_layout: CardLayout;
   bulk_discount: boolean;
