@@ -33,7 +33,6 @@ const PRODUCT_UPDATE = `
   }
 `;
 
-
 const METAFIELDS_SET = `
   mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -57,6 +56,16 @@ const INVENTORY_SET = `
   mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
     inventorySetQuantities(input: $input) {
       inventoryAdjustmentGroup { reason }
+      userErrors { field message }
+    }
+  }
+`;
+
+// New mutation to update variant details
+const VARIANT_UPDATE = `
+  mutation productVariantUpdate($input: ProductVariantInput!) {
+    productVariantUpdate(input: $input) {
+      productVariant { id sku price }
       userErrors { field message }
     }
   }
@@ -92,6 +101,7 @@ async function upsertOne(p: Product) {
   // 1) find or create by handle
   const existing = await gql<{ productByHandle: { id: string } | null }>(FIND_BY_HANDLE, { handle });
 
+  
   const productInput = {
     title: p.name,
     handle,
@@ -99,15 +109,6 @@ async function upsertOne(p: Product) {
     productType: p.category || "uncategorized",
     status: p.is_active && p.is_public ? "ACTIVE" : "DRAFT",
     tags: buildTags(p),
-    variants: [
-      {
-        price: dollars(p.price),        // cents -> "12.34"
-        sku: p.sku || "",
-        weight: Math.max(p.weight || 0, 0),
-        weightUnit: "GRAMS",
-        inventoryItem: { sku: p.sku || "", tracked: true },
-      },
-    ],
   };
 
   let productId: string;
@@ -125,7 +126,51 @@ async function upsertOne(p: Product) {
     productId = out.productCreate.product.id;
   }
 
-  // 2) metafields (need definitions under namespace "custom")
+  // 2) Get the variant (Shopify auto-creates one default variant)
+  const vq = await gql<{ 
+    product: { 
+      variants: { 
+        edges: { 
+          node: { 
+            id: string;
+            inventoryItem: { id: string; sku: string; tracked: boolean } 
+          } 
+        }[] 
+      } 
+    } 
+  }>(QUERY_VARIANTS_WITH_INV, { id: productId });
+  
+  const variantNode = vq.product.variants.edges[0]?.node;
+  if (!variantNode) throw new Error("No variant found after product creation");
+
+  const variantId = variantNode.id;
+  const invItemId = variantNode.inventoryItem.id;
+
+  // 3) Update the variant with price, SKU, and weight
+  const variantUpdate = await gql<{ 
+    productVariantUpdate: { 
+      productVariant: { id: string }, 
+      userErrors: unknown[] 
+    } 
+  }>(VARIANT_UPDATE, {
+    input: {
+      id: variantId,
+      price: dollars(p.price),
+      sku: p.sku || "",
+      weight: Math.max(p.weight || 0, 0),
+      weightUnit: "GRAMS",
+      inventoryItem: {
+        sku: p.sku || "",
+        tracked: true,
+      },
+    },
+  });
+  
+  if (variantUpdate.productVariantUpdate.userErrors?.length) {
+    throw new Error(JSON.stringify(variantUpdate.productVariantUpdate.userErrors));
+  }
+
+  // 4) metafields (need definitions under namespace "custom")
   const metafields = [
     { ownerId: productId, namespace: "custom", key: "gst", type: "boolean", value: String(Boolean(p.gst)) },
     { ownerId: productId, namespace: "custom", key: "badge_text", type: "single_line_text_field", value: p.badge_text || "" },
@@ -135,13 +180,7 @@ async function upsertOne(p: Product) {
   ];
   await gql(METAFIELDS_SET, { metafields });
 
-  // 3) set inventory on first variant
-  const vq = await gql<{ product: { variants: { edges: { node: { inventoryItem: { id: string } } }[] } } }>(
-    QUERY_VARIANTS_WITH_INV, { id: productId }
-  );
-  const invItemId = vq.product.variants.edges[0]?.node?.inventoryItem?.id;
-  if (!invItemId) return;
-
+  // 5) set inventory on first variant
   const quantity = p.is_outofstock ? 0 : 10; // TODO: need to replace with your real stock value
   await gql(INVENTORY_SET, {
     input: {
