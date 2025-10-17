@@ -16,7 +16,7 @@ const FIND_BY_HANDLE = `
 `;
 
 const PRODUCT_CREATE = `
-  mutation productCreate($input: ProductCreateInput!) {
+  mutation productCreate($input: ProductInput!) {
     productCreate(input: $input) {
       product { id title handle }
       userErrors { field message }
@@ -25,13 +25,14 @@ const PRODUCT_CREATE = `
 `;
 
 const PRODUCT_UPDATE = `
-  mutation productUpdate($input: ProductUpdateInput!) {
+  mutation productUpdate($input: ProductInput!) {
     productUpdate(input: $input) {
       product { id title handle }
       userErrors { field message }
     }
   }
 `;
+
 
 const METAFIELDS_SET = `
   mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
