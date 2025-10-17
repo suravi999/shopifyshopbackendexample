@@ -71,6 +71,16 @@ const VARIANT_UPDATE = `
   }
 `;
 
+// Bulk update for variants (alternative approach)
+const VARIANT_BULK_UPDATE = `
+  mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+      productVariants { id sku price }
+      userErrors { field message }
+    }
+  }
+`;
+
 // source types
 type ProductType = "CLASSIC" | "BUNDLE";
 type CardLayout = "CLASSIC" | "DOUBLED";
@@ -101,7 +111,7 @@ async function upsertOne(p: Product) {
   // 1) find or create by handle
   const existing = await gql<{ productByHandle: { id: string } | null }>(FIND_BY_HANDLE, { handle });
 
-  
+  // Remove variants from productInput - it's not supported in ProductInput
   const productInput = {
     title: p.name,
     handle,
@@ -146,14 +156,15 @@ async function upsertOne(p: Product) {
   const variantId = variantNode.id;
   const invItemId = variantNode.inventoryItem.id;
 
-  // 3) Update the variant with price, SKU, and weight
+  // 3) Update the variant with price, SKU, and weight using bulk update
   const variantUpdate = await gql<{ 
-    productVariantUpdate: { 
-      productVariant: { id: string }, 
+    productVariantsBulkUpdate: { 
+      productVariants: { id: string }[], 
       userErrors: unknown[] 
     } 
-  }>(VARIANT_UPDATE, {
-    input: {
+  }>(VARIANT_BULK_UPDATE, {
+    productId,
+    variants: [{
       id: variantId,
       price: dollars(p.price),
       sku: p.sku || "",
@@ -163,11 +174,11 @@ async function upsertOne(p: Product) {
         sku: p.sku || "",
         tracked: true,
       },
-    },
+    }],
   });
   
-  if (variantUpdate.productVariantUpdate.userErrors?.length) {
-    throw new Error(JSON.stringify(variantUpdate.productVariantUpdate.userErrors));
+  if (variantUpdate.productVariantsBulkUpdate.userErrors?.length) {
+    throw new Error(JSON.stringify(variantUpdate.productVariantsBulkUpdate.userErrors));
   }
 
   // 4) metafields (need definitions under namespace "custom")
