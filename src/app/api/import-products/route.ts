@@ -131,7 +131,27 @@ type InventorySetQuantitiesMutation = {
     };
 };
 
+type ProductCreateMediaMutation = {
+    productCreateMedia: {
+        media: { id: string }[] | null;
+        mediaUserErrors: { field?: string[]; message: string }[];
+    };
+};
+
+
+
+
 /** ------------ GraphQL documents ------------ */
+
+const PRODUCT_CREATE_MEDIA = `
+  mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+    productCreateMedia(productId: $productId, media: $media) {
+      media { id }
+      mediaUserErrors { field message }
+    }
+  }
+`;
+
 const FIND_BY_HANDLE = `
   query productByHandle($handle: String!) {
     productByHandle(handle: $handle) {
@@ -267,16 +287,21 @@ async function upsertOne(p: SourceProduct): Promise<void> {
     const inventoryItemId = defaultVariant.inventoryItem.id;
 
     // 5) Update default variant (price) + inventory item (sku)
+    const grams = Math.max(p.weight || 0, 0);
+
     const bulk = await gql<ProductVariantsBulkUpdateMutation>(PRODUCT_VARIANTS_BULK_UPDATE, {
         productId: product.id,
         variants: [
             {
                 id: defaultVariantId,
                 price: dollars(p.price),
+                weight: grams,
+                weightUnit: "GRAMS",
                 inventoryItem: { sku: p.sku || "" },
             },
         ],
     });
+
     if (bulk.productVariantsBulkUpdate.userErrors.length) {
         throw new Error(
             `productVariantsBulkUpdate userErrors: ${JSON.stringify(
@@ -298,6 +323,29 @@ async function upsertOne(p: SourceProduct): Promise<void> {
         // ignore optional step failures
     }
 
+    // 5b) Attach an image from a URL (if provided)
+    if (p.image) {
+        try {
+            const mediaRes = await gql<ProductCreateMediaMutation>(PRODUCT_CREATE_MEDIA, {
+                productId: product.id,
+                media: [
+                    {
+                        originalSource: p.image,        // ✅ direct https image URL
+                        alt: p.name,
+                        mediaContentType: "IMAGE",      // enum
+                    },
+                ],
+            });
+            if (mediaRes.productCreateMedia.mediaUserErrors?.length) {
+                // non-fatal
+                console.warn("productCreateMedia errors:", mediaRes.productCreateMedia.mediaUserErrors);
+            }
+        } catch {
+            // non-fatal
+        }
+    }
+
+
     // 6) Activate at location (creates InventoryLevel if missing)
     const initialQty = p.is_outofstock ? 0 : 10;
     try {
@@ -315,20 +363,20 @@ async function upsertOne(p: SourceProduct): Promise<void> {
 
     // 7) Set absolute quantity
     const set = await gql<InventorySetQuantitiesMutation>(INVENTORY_SET, {
-  input: {
-    reason: "correction",
-    name: "available",
-    ignoreCompareQuantity: true,
-    quantities: [
-      {
-        inventoryItemId,
-        locationId: LOCATION_ID,
-        quantity: p.is_outofstock ? 0 : 10,
-        // compareQuantity: 0
-      },
-    ],
-  },
-});
+        input: {
+            reason: "correction",
+            name: "available",
+            ignoreCompareQuantity: true,
+            quantities: [
+                {
+                    inventoryItemId,
+                    locationId: LOCATION_ID,
+                    quantity: p.is_outofstock ? 0 : 10,
+                    // compareQuantity: 0
+                },
+            ],
+        },
+    });
 
 
     if (set.inventorySetQuantities.userErrors.length) {
@@ -340,15 +388,15 @@ async function upsertOne(p: SourceProduct): Promise<void> {
     }
 
     // 8) Metafields (typed; requires definitions under namespace "custom")
-await gql(METAFIELDS_SET, {
-  metafields: [
-    { ownerId: product.id, namespace: "custom", key: "gst", type: "boolean", value: String(Boolean(p.gst)) },
-    { ownerId: product.id, namespace: "custom", key: "badge_text", type: "single_line_text_field", value: p.badge_text || "" },
-    { ownerId: product.id, namespace: "custom", key: "badge_color", type: "single_line_text_field", value: p.badge_color || "" },
-    { ownerId: product.id, namespace: "custom", key: "cooking_method", type: "single_line_text_field", value: p.cooking_method || "" },
-    { ownerId: product.id, namespace: "custom", key: "description_text", type: "multi_line_text_field", value: p.description_text || "" },
-  ],
-});
+    await gql(METAFIELDS_SET, {
+        metafields: [
+            { ownerId: product.id, namespace: "custom", key: "gst", type: "boolean", value: String(Boolean(p.gst)) },
+            { ownerId: product.id, namespace: "custom", key: "badge_text", type: "single_line_text_field", value: p.badge_text || "" },
+            { ownerId: product.id, namespace: "custom", key: "badge_color", type: "single_line_text_field", value: p.badge_color || "" },
+            { ownerId: product.id, namespace: "custom", key: "cooking_method", type: "single_line_text_field", value: p.cooking_method || "" },
+            { ownerId: product.id, namespace: "custom", key: "description_text", type: "multi_line_text_field", value: p.description_text || "" },
+        ],
+    });
 
 }
 
