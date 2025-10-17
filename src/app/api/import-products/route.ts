@@ -152,7 +152,7 @@ const PRODUCT_CREATE = `
 `;
 
 const PRODUCT_UPDATE = `
-  mutation productUpdate($product: ProductInput!) {
+  mutation productUpdate($product: ProductUpdateInput!) {
     productUpdate(product: $product) {
       product { id handle variants(first: 1) { nodes { id inventoryItem { id sku } } } }
       userErrors { field message }
