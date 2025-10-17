@@ -5,14 +5,16 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { gql, dollars, makeHandleFromSlugOrName, buildTags } from "@/lib/shopify";
 
+/** ------------ Env ------------ */
 const LOCATION_ID = process.env.SHOPIFY_LOCATION_ID!;
 const DEFAULT_SRC =
   process.env.SOURCE_PRODUCTS_URL || "https://rump.ourcow.com.au/api/products/";
 
-/** ---------------- Types from your source shape ---------------- */
+/** ------------ Source types (your upstream shape) ------------ */
 type ProductType = "CLASSIC" | "BUNDLE";
 type CardLayout = "CLASSIC" | "DOUBLED";
-type Product = {
+
+export type SourceProduct = {
   id: string;
   sku: string;
   name: string;
@@ -56,27 +58,94 @@ type SourceResponse = {
   count: number;
   next: string | null;
   previous: string | null;
-  results: Product[];
+  results: SourceProduct[];
 };
 
-/** ---------------- GraphQL operations ---------------- */
+/** ------------ Shopify GraphQL types ------------ */
+type GQLError = { field?: string[]; message: string };
 
-// Find by handle (used as idempotent key)
+type VariantNode = {
+  id: string;
+  inventoryItem: { id: string; sku: string };
+};
+
+type ProductNode = {
+  id: string;
+  handle: string;
+  variants: { nodes: VariantNode[] };
+};
+
+type FindByHandleQuery = {
+  productByHandle: (ProductNode & {}) | null;
+};
+
+type ProductCreateInput = {
+  title: string;
+  handle?: string;
+  descriptionHtml?: string;
+  productType?: string;
+  status?: "ACTIVE" | "ARCHIVED" | "DRAFT";
+  tags?: string[];
+};
+
+type ProductUpdateInput = ProductCreateInput & { id: string };
+
+type ProductCreateMutation = {
+  productCreate: {
+    product: ProductNode | null;
+    userErrors: GQLError[];
+  };
+};
+
+type ProductUpdateMutation = {
+  productUpdate: {
+    product: ProductNode | null;
+    userErrors: GQLError[];
+  };
+};
+
+type ProductVariantsBulkUpdateMutation = {
+  productVariantsBulkUpdate: {
+    productVariants: { id: string }[];
+    userErrors: GQLError[];
+  };
+};
+
+type InventoryItemUpdateMutation = {
+  inventoryItemUpdate: {
+    inventoryItem: { id: string } | null;
+    userErrors: GQLError[];
+  };
+};
+
+type InventoryActivateMutation = {
+  inventoryActivate: {
+    inventoryLevel: { id: string } | null;
+    userErrors: GQLError[];
+  };
+};
+
+type InventorySetQuantitiesMutation = {
+  inventorySetQuantities: {
+    userErrors: GQLError[];
+  };
+};
+
+/** ------------ GraphQL documents ------------ */
 const FIND_BY_HANDLE = `
   query productByHandle($handle: String!) {
-    productByHandle(handle: $handle) { id handle variants(first: 1) { nodes { id inventoryItem { id sku } } } }
+    productByHandle(handle: $handle) {
+      id
+      handle
+      variants(first: 1) { nodes { id inventoryItem { id sku } } }
+    }
   }
 `;
 
-// NOTE: current schema uses the 'product' argument and does not accept 'variants' inline.
 const PRODUCT_CREATE = `
   mutation productCreate($product: ProductCreateInput!) {
     productCreate(product: $product) {
-      product {
-        id
-        handle
-        variants(first: 1) { nodes { id inventoryItem { id sku } } }
-      }
+      product { id handle variants(first: 1) { nodes { id inventoryItem { id sku } } } }
       userErrors { field message }
     }
   }
@@ -85,17 +154,12 @@ const PRODUCT_CREATE = `
 const PRODUCT_UPDATE = `
   mutation productUpdate($product: ProductInput!) {
     productUpdate(product: $product) {
-      product {
-        id
-        handle
-        variants(first: 1) { nodes { id inventoryItem { id sku } } }
-      }
+      product { id handle variants(first: 1) { nodes { id inventoryItem { id sku } } } }
       userErrors { field message }
     }
   }
 `;
 
-// Bulk update variant fields (price) and inventory item fields (sku, etc.)
 const PRODUCT_VARIANTS_BULK_UPDATE = `
   mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
     productVariantsBulkUpdate(productId: $productId, variants: $variants) {
@@ -105,7 +169,6 @@ const PRODUCT_VARIANTS_BULK_UPDATE = `
   }
 `;
 
-// Metafields (requires definitions under namespace "custom")
 const METAFIELDS_SET = `
   mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -115,7 +178,6 @@ const METAFIELDS_SET = `
   }
 `;
 
-// Optional: ensure inventory item flags (e.g., tracked) or SKU updates
 const INVENTORY_ITEM_UPDATE = `
   mutation inventoryItemUpdate($id: ID!, $input: InventoryItemInput!) {
     inventoryItemUpdate(id: $id, input: $input) {
@@ -125,7 +187,6 @@ const INVENTORY_ITEM_UPDATE = `
   }
 `;
 
-// Activate inventory at a location (creates InventoryLevel if missing)
 const INVENTORY_ACTIVATE = `
   mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!, $available: Int) {
     inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: $available) {
@@ -135,7 +196,6 @@ const INVENTORY_ACTIVATE = `
   }
 `;
 
-// Set absolute quantity at a location
 const INVENTORY_SET = `
   mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
     inventorySetQuantities(input: $input) {
@@ -144,19 +204,25 @@ const INVENTORY_SET = `
   }
 `;
 
-/** ---------------- Import/Upsert logic per product ---------------- */
+/** ------------ Importer core ------------ */
 
-async function upsertOne(p: Product) {
-  if (!LOCATION_ID) throw new Error("Missing SHOPIFY_LOCATION_ID (gid://shopify/Location/...)");
+function asErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
-  // 1) Create a stable handle (from slug or name)
+async function upsertOne(p: SourceProduct): Promise<void> {
+  if (!LOCATION_ID) {
+    throw new Error("Missing SHOPIFY_LOCATION_ID (gid://shopify/Location/...)");
+  }
+
+  // 1) Handle
   const handle = makeHandleFromSlugOrName(p.slug, p.name);
 
-  // 2) Check if a product already exists
-  const existing = await gql<{ productByHandle: any }>(FIND_BY_HANDLE, { handle });
+  // 2) Lookup existing product
+  const found = await gql<FindByHandleQuery>(FIND_BY_HANDLE, { handle });
 
-  // 3) Base product payload (NO variants here)
-  const baseProduct = {
+  // 3) Build product payload (no variants inline)
+  const productBase: ProductCreateInput = {
     title: p.name,
     handle,
     descriptionHtml: p.description || "",
@@ -165,92 +231,79 @@ async function upsertOne(p: Product) {
     tags: buildTags(p),
   };
 
-  // 4) Create or update product
-  let productId: string;
-  let defaultVariantId: string | undefined;
-  let inventoryItemId: string | undefined;
-
-  if (existing.productByHandle?.id) {
-    const out = await gql<{ productUpdate: { product: any; userErrors: any[] } }>(PRODUCT_UPDATE, {
-      product: { id: existing.productByHandle.id, ...baseProduct },
-    });
-    if (out.productUpdate.userErrors?.length) {
-      throw new Error("productUpdate userErrors: " + JSON.stringify(out.productUpdate.userErrors));
+  // 4) Create or update
+  let product: ProductNode | null = null;
+  if (found.productByHandle?.id) {
+    const updateInput: ProductUpdateInput = { id: found.productByHandle.id, ...productBase };
+    const upd = await gql<ProductUpdateMutation>(PRODUCT_UPDATE, { product: updateInput });
+    if (upd.productUpdate.userErrors.length) {
+      throw new Error(`productUpdate userErrors: ${JSON.stringify(upd.productUpdate.userErrors)}`);
     }
-    const prod = out.productUpdate.product;
-    productId = prod.id;
-    defaultVariantId = prod.variants?.nodes?.[0]?.id;
-    inventoryItemId = prod.variants?.nodes?.[0]?.inventoryItem?.id;
+    product = upd.productUpdate.product;
   } else {
-    const out = await gql<{ productCreate: { product: any; userErrors: any[] } }>(PRODUCT_CREATE, {
-      product: baseProduct,
-    });
-    if (out.productCreate.userErrors?.length) {
-      throw new Error("productCreate userErrors: " + JSON.stringify(out.productCreate.userErrors));
+    const crt = await gql<ProductCreateMutation>(PRODUCT_CREATE, { product: productBase });
+    if (crt.productCreate.userErrors.length) {
+      throw new Error(`productCreate userErrors: ${JSON.stringify(crt.productCreate.userErrors)}`);
     }
-    const prod = out.productCreate.product;
-    productId = prod.id;
-    defaultVariantId = prod.variants?.nodes?.[0]?.id;
-    inventoryItemId = prod.variants?.nodes?.[0]?.inventoryItem?.id;
+    product = crt.productCreate.product;
   }
 
-  if (!productId || !defaultVariantId || !inventoryItemId) {
-    throw new Error("Missing product/variant/inventoryItem IDs after create/update.");
-  }
+  if (!product) throw new Error("Product create/update returned null product.");
 
-  // 5) Update default variant (price) and inventory item (sku)
-  {
-    const out = await gql<{ productVariantsBulkUpdate: { userErrors: any[] } }>(
-      PRODUCT_VARIANTS_BULK_UPDATE,
+  const defaultVariant = product.variants.nodes[0];
+  if (!defaultVariant) throw new Error("No default variant found after create/update.");
+  const defaultVariantId = defaultVariant.id;
+  const inventoryItemId = defaultVariant.inventoryItem.id;
+
+  // 5) Update default variant (price) + inventory item (sku)
+  const bulk = await gql<ProductVariantsBulkUpdateMutation>(PRODUCT_VARIANTS_BULK_UPDATE, {
+    productId: product.id,
+    variants: [
       {
-        productId,
-        variants: [
-          {
-            id: defaultVariantId,
-            price: dollars(p.price),
-            inventoryItem: { sku: p.sku || "" },
-          },
-        ],
-      }
+        id: defaultVariantId,
+        price: dollars(p.price),
+        inventoryItem: { sku: p.sku || "" },
+      },
+    ],
+  });
+  if (bulk.productVariantsBulkUpdate.userErrors.length) {
+    throw new Error(
+      `productVariantsBulkUpdate userErrors: ${JSON.stringify(
+        bulk.productVariantsBulkUpdate.userErrors
+      )}`
     );
-    if (out.productVariantsBulkUpdate.userErrors?.length) {
-      throw new Error(
-        "productVariantsBulkUpdate userErrors: " +
-          JSON.stringify(out.productVariantsBulkUpdate.userErrors)
-      );
-    }
   }
 
-  // 6) (Optional) Ensure inventory item is tracked (if your store needs it)
+  // (Optional) Ensure inventory item flags; not all API versions support tracked here
   try {
-    await gql(INVENTORY_ITEM_UPDATE, {
+    const invUpd = await gql<InventoryItemUpdateMutation>(INVENTORY_ITEM_UPDATE, {
       id: inventoryItemId,
-      input: { sku: p.sku || "" /*, tracked: true (enable if your API version supports it)*/ },
+      input: { sku: p.sku || "" },
     });
+    if (invUpd.inventoryItemUpdate.userErrors.length) {
+      // non-fatal for POC
+    }
   } catch {
-    // non-fatal for POC; some API versions restrict tracked here
+    // ignore optional step failures
   }
 
-  // 7) Activate inventory at location (creates level if missing)
+  // 6) Activate at location (creates InventoryLevel if missing)
   const initialQty = p.is_outofstock ? 0 : 10;
   try {
-    const act = await gql<{ inventoryActivate: { userErrors: any[] } }>(INVENTORY_ACTIVATE, {
+    const act = await gql<InventoryActivateMutation>(INVENTORY_ACTIVATE, {
       inventoryItemId,
       locationId: LOCATION_ID,
       available: initialQty,
     });
-    if (act.inventoryActivate?.userErrors?.length) {
-      // not fatal; we'll still set quantities below
-      // eslint-disable-next-line no-console
-      console.warn("inventoryActivate userErrors", act.inventoryActivate.userErrors);
+    if (act.inventoryActivate.userErrors.length) {
+      // not fatal; we will still set absolute quantity
     }
   } catch {
-    // swallow; not all stores require/allow explicit activate in all cases
+    // ignore; activation isn't required on all stores/versions
   }
 
-  // 8) Set absolute quantity
-  const quantity = p.is_outofstock ? 0 : 10;
-  const set = await gql<{ inventorySetQuantities: { userErrors: any[] } }>(INVENTORY_SET, {
+  // 7) Set absolute quantity
+  const set = await gql<InventorySetQuantitiesMutation>(INVENTORY_SET, {
     input: {
       reason: "correction",
       name: "available",
@@ -259,63 +312,66 @@ async function upsertOne(p: Product) {
           inventoryItemId,
           locationId: LOCATION_ID,
           type: "set",
-          quantity,
+          quantity: p.is_outofstock ? 0 : 10,
           delta: 0,
         },
       ],
     },
   });
-  if (set.inventorySetQuantities?.userErrors?.length) {
+  if (set.inventorySetQuantities.userErrors.length) {
     throw new Error(
-      "inventorySetQuantities userErrors: " +
-        JSON.stringify(set.inventorySetQuantities.userErrors)
+      `inventorySetQuantities userErrors: ${JSON.stringify(
+        set.inventorySetQuantities.userErrors
+      )}`
     );
   }
 
-  // 9) Metafields (typed; defs must exist under namespace "custom")
-  await gql(METAFIELDS_SET, {
-    metafields: [
-      {
-        ownerId: productId,
-        namespace: "custom",
-        key: "gst",
-        type: "boolean",
-        value: String(Boolean(p.gst)),
-      },
-      {
-        ownerId: productId,
-        namespace: "custom",
-        key: "badge_text",
-        type: "single_line_text_field",
-        value: p.badge_text || "",
-      },
-      {
-        ownerId: productId,
-        namespace: "custom",
-        key: "badge_color",
-        type: "single_line_text_field",
-        value: p.badge_color || "",
-      },
-      {
-        ownerId: productId,
-        namespace: "custom",
-        key: "cooking_method",
-        type: "single_line_text_field",
-        value: p.cooking_method || "",
-      },
-      {
-        ownerId: productId,
-        namespace: "custom",
-        key: "description_text",
-        type: "multi_line_text_field",
-        value: p.description_text || "",
-      },
-    ],
-  });
+  // 8) Metafields (typed; requires definitions under namespace "custom")
+  await gql(
+    METAFIELDS_SET,
+    {
+      metafields: [
+        {
+          ownerId: product.id,
+          namespace: "custom",
+          key: "gst",
+          type: "boolean",
+          value: String(Boolean(p.gst)),
+        },
+        {
+          ownerId: product.id,
+          namespace: "custom",
+          key: "badge_text",
+          type: "single_line_text_field",
+          value: p.badge_text || "",
+        },
+        {
+          ownerId: product.id,
+          namespace: "custom",
+          key: "badge_color",
+          type: "single_line_text_field",
+          value: p.badge_color || "",
+        },
+        {
+          ownerId: product.id,
+          namespace: "custom",
+          key: "cooking_method",
+          type: "single_line_text_field",
+          value: p.cooking_method || "",
+        },
+        {
+          ownerId: product.id,
+          namespace: "custom",
+          key: "description_text",
+          type: "multi_line_text_field",
+          value: p.description_text || "",
+        },
+      ],
+    }
+  );
 }
 
-/** ---------------- POST handler ---------------- */
-
+/** ------------ POST handler ------------ */
 export async function POST(req: Request) {
   try {
     const url = new URL(req.url);
@@ -331,13 +387,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const results: { name: string; ok: boolean; error?: string }[] = [];
+    const results: Array<{ name: string; ok: boolean; error?: string }> = [];
+
     for (const p of data.results) {
       try {
         await upsertOne(p);
         results.push({ name: p.name, ok: true });
-      } catch (e: any) {
-        results.push({ name: p.name, ok: false, error: e?.message ?? String(e) });
+      } catch (err: unknown) {
+        results.push({ name: p.name, ok: false, error: asErrorMessage(err) });
       }
     }
 
@@ -345,9 +402,9 @@ export async function POST(req: Request) {
       { imported: results.filter((x) => x.ok).length, results },
       { headers: { "Access-Control-Allow-Origin": "*" } }
     );
-  } catch (e: any) {
+  } catch (err: unknown) {
     return NextResponse.json(
-      { error: e?.message ?? "Unknown error" },
+      { error: asErrorMessage(err) },
       { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
     );
   }
