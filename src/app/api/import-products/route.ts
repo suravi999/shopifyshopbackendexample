@@ -314,18 +314,21 @@ async function upsertOne(p: SourceProduct): Promise<void> {
 
     // 7) Set absolute quantity
     const set = await gql<InventorySetQuantitiesMutation>(INVENTORY_SET, {
-        input: {
-            reason: "correction",
-            name: "available",
-            quantities: [
-                {
-                    inventoryItemId,
-                    locationId: LOCATION_ID,
-                    quantity: p.is_outofstock ? 0 : 10,
-                },
-            ],
-        },
-    });
+  input: {
+    reason: "correction",
+    name: "available",
+    ignoreCompareQuantity: true,
+    quantities: [
+      {
+        inventoryItemId,
+        locationId: LOCATION_ID,
+        quantity: p.is_outofstock ? 0 : 10,
+        // compareQuantity: 0
+      },
+    ],
+  },
+});
+
 
     if (set.inventorySetQuantities.userErrors.length) {
         throw new Error(
