@@ -172,11 +172,12 @@ const PRODUCT_VARIANTS_BULK_UPDATE = `
 const METAFIELDS_SET = `
   mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
-      metafields { key namespace owner { id } }
+      metafields { id key namespace type }
       userErrors { field message }
     }
   }
 `;
+
 
 const INVENTORY_ITEM_UPDATE = `
   mutation inventoryItemUpdate($id: ID!, $input: InventoryItemInput!) {
@@ -339,48 +340,16 @@ async function upsertOne(p: SourceProduct): Promise<void> {
     }
 
     // 8) Metafields (typed; requires definitions under namespace "custom")
-    await gql(
-        METAFIELDS_SET,
-        {
-            metafields: [
-                {
-                    ownerId: product.id,
-                    namespace: "custom",
-                    key: "gst",
-                    type: "boolean",
-                    value: String(Boolean(p.gst)),
-                },
-                {
-                    ownerId: product.id,
-                    namespace: "custom",
-                    key: "badge_text",
-                    type: "single_line_text_field",
-                    value: p.badge_text || "",
-                },
-                {
-                    ownerId: product.id,
-                    namespace: "custom",
-                    key: "badge_color",
-                    type: "single_line_text_field",
-                    value: p.badge_color || "",
-                },
-                {
-                    ownerId: product.id,
-                    namespace: "custom",
-                    key: "cooking_method",
-                    type: "single_line_text_field",
-                    value: p.cooking_method || "",
-                },
-                {
-                    ownerId: product.id,
-                    namespace: "custom",
-                    key: "description_text",
-                    type: "multi_line_text_field",
-                    value: p.description_text || "",
-                },
-            ],
-        }
-    );
+await gql(METAFIELDS_SET, {
+  metafields: [
+    { ownerId: product.id, namespace: "custom", key: "gst", type: "boolean", value: String(Boolean(p.gst)) },
+    { ownerId: product.id, namespace: "custom", key: "badge_text", type: "single_line_text_field", value: p.badge_text || "" },
+    { ownerId: product.id, namespace: "custom", key: "badge_color", type: "single_line_text_field", value: p.badge_color || "" },
+    { ownerId: product.id, namespace: "custom", key: "cooking_method", type: "single_line_text_field", value: p.cooking_method || "" },
+    { ownerId: product.id, namespace: "custom", key: "description_text", type: "multi_line_text_field", value: p.description_text || "" },
+  ],
+});
+
 }
 
 /** ------------ POST handler ------------ */
