@@ -316,15 +316,6 @@ async function upsertOne(p: SourceProduct): Promise<void> {
         }
     }
 
-
-    if (bulk.productVariantsBulkUpdate.userErrors.length) {
-        throw new Error(
-            `productVariantsBulkUpdate userErrors: ${JSON.stringify(
-                bulk.productVariantsBulkUpdate.userErrors
-            )}`
-        );
-    }
-
     // (Optional) Ensure inventory item flags; not all API versions support tracked here
     try {
         const invUpd = await gql<InventoryItemUpdateMutation>(INVENTORY_ITEM_UPDATE, {
