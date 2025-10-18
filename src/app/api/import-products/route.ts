@@ -138,7 +138,12 @@ type ProductCreateMediaMutation = {
     };
 };
 
-
+type ProductVariantUpdateMutation = {
+  productVariantUpdate: {
+    productVariant: { id: string; weight?: number | null; weightUnit?: "GRAMS" | "KILOGRAMS" | "OUNCES" | "POUNDS" | null } | null;
+    userErrors: { field?: string[]; message: string }[];
+  };
+};
 
 
 /** ------------ GraphQL documents ------------ */
@@ -148,6 +153,15 @@ const PRODUCT_CREATE_MEDIA = `
     productCreateMedia(productId: $productId, media: $media) {
       media { id }
       mediaUserErrors { field message }
+    }
+  }
+`;
+
+const PRODUCT_VARIANT_UPDATE = `
+  mutation productVariantUpdate($input: ProductVariantInput!) {
+    productVariantUpdate(input: $input) {
+      productVariant { id weight weightUnit }
+      userErrors { field message }
     }
   }
 `;
@@ -330,9 +344,9 @@ async function upsertOne(p: SourceProduct): Promise<void> {
                 productId: product.id,
                 media: [
                     {
-                        originalSource: p.image,        // ✅ direct https image URL
+                        originalSource: p.image,        
                         alt: p.name,
-                        mediaContentType: "IMAGE",      // enum
+                        mediaContentType: "IMAGE",
                     },
                 ],
             });
