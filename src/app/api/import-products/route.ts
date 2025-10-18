@@ -139,10 +139,10 @@ type ProductCreateMediaMutation = {
 };
 
 type ProductVariantUpdateMutation = {
-  productVariantUpdate: {
-    productVariant: { id: string; weight?: number | null; weightUnit?: "GRAMS" | "KILOGRAMS" | "OUNCES" | "POUNDS" | null } | null;
-    userErrors: { field?: string[]; message: string }[];
-  };
+    productVariantUpdate: {
+        productVariant: { id: string; weight?: number | null; weightUnit?: "GRAMS" | "KILOGRAMS" | "OUNCES" | "POUNDS" | null } | null;
+        userErrors: { field?: string[]; message: string }[];
+    };
 };
 
 
@@ -303,18 +303,19 @@ async function upsertOne(p: SourceProduct): Promise<void> {
     // 5) Update default variant (price) + inventory item (sku)
     const grams = Math.max(p.weight || 0, 0);
 
-    const bulk = await gql<ProductVariantsBulkUpdateMutation>(PRODUCT_VARIANTS_BULK_UPDATE, {
-        productId: product.id,
-        variants: [
-            {
+    if (grams > 0) {
+        const vupd = await gql<ProductVariantUpdateMutation>(PRODUCT_VARIANT_UPDATE, {
+            input: {
                 id: defaultVariantId,
-                price: dollars(p.price),
-                weight: grams,
-                weightUnit: "GRAMS",
-                inventoryItem: { sku: p.sku || "" },
+                weight: grams,        // number
+                weightUnit: "GRAMS",  // "GRAMS" | "KILOGRAMS" | "OUNCES" | "POUNDS"
             },
-        ],
-    });
+        });
+        if (vupd.productVariantUpdate.userErrors.length) {
+            throw new Error(`productVariantUpdate userErrors: ${JSON.stringify(vupd.productVariantUpdate.userErrors)}`);
+        }
+    }
+
 
     if (bulk.productVariantsBulkUpdate.userErrors.length) {
         throw new Error(
@@ -344,7 +345,7 @@ async function upsertOne(p: SourceProduct): Promise<void> {
                 productId: product.id,
                 media: [
                     {
-                        originalSource: p.image,        
+                        originalSource: p.image,
                         alt: p.name,
                         mediaContentType: "IMAGE",
                     },
