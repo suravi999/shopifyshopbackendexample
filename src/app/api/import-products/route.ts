@@ -8,164 +8,146 @@ import { gql, dollars, makeHandleFromSlugOrName, buildTags } from "@/lib/shopify
 /** ------------ Env ------------ */
 const LOCATION_ID = process.env.SHOPIFY_LOCATION_ID!;
 const DEFAULT_SRC =
-    process.env.SOURCE_PRODUCTS_URL || "https://rump.ourcow.com.au/api/products/";
+  process.env.SOURCE_PRODUCTS_URL || "https://rump.ourcow.com.au/api/products/";
 
-/** ------------ Source types (your upstream shape) ------------ */
+/** ------------ Source types ------------ */
 type ProductType = "CLASSIC" | "BUNDLE";
 type CardLayout = "CLASSIC" | "DOUBLED";
 
 export type SourceProduct = {
-    id: string;
-    sku: string;
-    name: string;
-    slug: string;
-    canonical_url: string | null;
-    type: ProductType;
-    category: string;
-    old_price: number;
-    price: number; // cents
-    description: string;
-    description_text: string;
-    image: string | null;
-    gst: boolean;
-    weight: number; // grams
-    is_weight_precise: boolean;
-    is_active: boolean;
-    is_public: boolean;
-    is_christmas: boolean;
-    is_christmas_main: boolean;
-    is_featured: boolean;
-    is_highlighted: boolean;
-    is_popup: boolean;
-    is_alcohol: boolean;
-    is_outofstock: boolean;
-    free_delivery: boolean;
-    rank: number;
-    badge_text: string;
-    badge_color: string;
-    cooking_method: string;
-    nutritional_info: string;
-    review_rating: number;
-    content: unknown[];
-    media: unknown[];
-    tag: string[];
-    card_layout: CardLayout;
-    bulk_discount: boolean;
-    xmas_rank: number;
+  id: string;
+  sku: string;
+  name: string;
+  slug: string;
+  canonical_url: string | null;
+  type: ProductType;
+  category: string;
+  old_price: number;
+  price: number; // cents
+  description: string;
+  description_text: string;
+  image: string | null;
+  gst: boolean;
+  weight: number; // grams
+  is_weight_precise: boolean;
+  is_active: boolean;
+  is_public: boolean;
+  is_christmas: boolean;
+  is_christmas_main: boolean;
+  is_featured: boolean;
+  is_highlighted: boolean;
+  is_popup: boolean;
+  is_alcohol: boolean;
+  is_outofstock: boolean;
+  free_delivery: boolean;
+  rank: number;
+  badge_text: string;
+  badge_color: string;
+  cooking_method: string;
+  nutritional_info: string;
+  review_rating: number;
+  content: unknown[];
+  media: unknown[];
+  tag: string[];
+  card_layout: CardLayout;
+  bulk_discount: boolean;
+  xmas_rank: number;
 };
 
 type SourceResponse = {
-    count: number;
-    next: string | null;
-    previous: string | null;
-    results: SourceProduct[];
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: SourceProduct[];
 };
 
 /** ------------ Shopify GraphQL types ------------ */
 type GQLError = { field?: string[]; message: string };
 
 type VariantNode = {
-    id: string;
-    inventoryItem: { id: string; sku: string };
+  id: string;
+  inventoryItem: { id: string; sku: string };
 };
 
 type ProductNode = {
-    id: string;
-    handle: string;
-    variants: { nodes: VariantNode[] };
+  id: string;
+  handle: string;
+  variants: { nodes: VariantNode[] };
 };
 
 type FindByHandleQuery = {
-    productByHandle: (ProductNode & {}) | null;
+  productByHandle: ProductNode | null;
 };
 
 type ProductCreateInput = {
-    title: string;
-    handle?: string;
-    descriptionHtml?: string;
-    productType?: string;
-    status?: "ACTIVE" | "ARCHIVED" | "DRAFT";
-    tags?: string[];
+  title: string;
+  handle?: string;
+  descriptionHtml?: string;
+  productType?: string;
+  status?: "ACTIVE" | "ARCHIVED" | "DRAFT";
+  tags?: string[];
 };
 
 type ProductUpdateInput = ProductCreateInput & { id: string };
 
 type ProductCreateMutation = {
-    productCreate: {
-        product: ProductNode | null;
-        userErrors: GQLError[];
-    };
+  productCreate: {
+    product: ProductNode | null;
+    userErrors: GQLError[];
+  };
 };
 
 type ProductUpdateMutation = {
-    productUpdate: {
-        product: ProductNode | null;
-        userErrors: GQLError[];
-    };
+  productUpdate: {
+    product: ProductNode | null;
+    userErrors: GQLError[];
+  };
 };
 
 type ProductVariantsBulkUpdateMutation = {
-    productVariantsBulkUpdate: {
-        productVariants: { id: string }[];
-        userErrors: GQLError[];
-    };
+  productVariantsBulkUpdate: {
+    productVariants: { id: string }[];
+    userErrors: GQLError[];
+  };
 };
 
 type InventoryItemUpdateMutation = {
-    inventoryItemUpdate: {
-        inventoryItem: { id: string } | null;
-        userErrors: GQLError[];
-    };
+  inventoryItemUpdate: {
+    inventoryItem: { id: string } | null;
+    userErrors: GQLError[];
+  };
 };
 
 type InventoryActivateMutation = {
-    inventoryActivate: {
-        inventoryLevel: { id: string } | null;
-        userErrors: GQLError[];
-    };
+  inventoryActivate: {
+    inventoryLevel: { id: string } | null;
+    userErrors: GQLError[];
+  };
 };
 
 type InventorySetQuantitiesMutation = {
-    inventorySetQuantities: {
-        userErrors: GQLError[];
-    };
+  inventorySetQuantities: {
+    inventoryAdjustmentGroup?: {
+      reason: string;
+      changes: {
+        name: string;
+        quantityAfterChange: number;
+        item: { id: string };
+        location: { id: string };
+      }[];
+    } | null;
+    userErrors: GQLError[];
+  };
 };
 
 type ProductCreateMediaMutation = {
-    productCreateMedia: {
-        media: { id: string }[] | null;
-        mediaUserErrors: { field?: string[]; message: string }[];
-    };
+  productCreateMedia: {
+    media: { id: string }[] | null;
+    mediaUserErrors: { field?: string[]; message: string }[];
+  };
 };
-
-type ProductVariantUpdateMutation = {
-    productVariantUpdate: {
-        productVariant: { id: string; weight?: number | null; weightUnit?: "GRAMS" | "KILOGRAMS" | "OUNCES" | "POUNDS" | null } | null;
-        userErrors: { field?: string[]; message: string }[];
-    };
-};
-
 
 /** ------------ GraphQL documents ------------ */
-
-const PRODUCT_CREATE_MEDIA = `
-  mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-    productCreateMedia(productId: $productId, media: $media) {
-      media { id }
-      mediaUserErrors { field message }
-    }
-  }
-`;
-
-const PRODUCT_VARIANT_UPDATE = `
-  mutation productVariantUpdate($input: ProductVariantInput!) {
-    productVariantUpdate(input: $input) {
-      productVariant { id weight weightUnit }
-      userErrors { field message }
-    }
-  }
-`;
-
 const FIND_BY_HANDLE = `
   query productByHandle($handle: String!) {
     productByHandle(handle: $handle) {
@@ -203,16 +185,6 @@ const PRODUCT_VARIANTS_BULK_UPDATE = `
   }
 `;
 
-const METAFIELDS_SET = `
-  mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
-    metafieldsSet(metafields: $metafields) {
-      metafields { id key namespace type }
-      userErrors { field message }
-    }
-  }
-`;
-
-
 const INVENTORY_ITEM_UPDATE = `
   mutation inventoryItemUpdate($id: ID!, $input: InventoryItemInput!) {
     inventoryItemUpdate(id: $id, input: $input) {
@@ -248,199 +220,234 @@ const INVENTORY_SET = `
   }
 `;
 
+const METAFIELDS_SET = `
+  mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      metafields { id key namespace type }
+      userErrors { field message }
+    }
+  }
+`;
 
-/** ------------ Importer core ------------ */
+const PRODUCT_CREATE_MEDIA = `
+  mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+    productCreateMedia(productId: $productId, media: $media) {
+      media { id }
+      mediaUserErrors { field message }
+    }
+  }
+`;
 
+/** ------------ Helpers ------------ */
 function asErrorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
+  return err instanceof Error ? err.message : String(err);
 }
 
+/** ------------ Importer core ------------ */
 async function upsertOne(p: SourceProduct): Promise<void> {
-    if (!LOCATION_ID) {
-        throw new Error("Missing SHOPIFY_LOCATION_ID (gid://shopify/Location/...)");
+  if (!LOCATION_ID) {
+    throw new Error("Missing SHOPIFY_LOCATION_ID (gid://shopify/Location/...)");
+  }
+
+  // 1) Handle
+  const handle = makeHandleFromSlugOrName(p.slug, p.name);
+
+  // 2) Lookup existing product
+  const found = await gql<FindByHandleQuery>(FIND_BY_HANDLE, { handle });
+
+  // 3) Base product (no variants inline)
+  const productBase: ProductCreateInput = {
+    title: p.name,
+    handle,
+    descriptionHtml: p.description || "",
+    productType: p.category || "uncategorized",
+    status: p.is_active && p.is_public ? "ACTIVE" : "DRAFT",
+    tags: buildTags(p),
+  };
+
+  // 4) Create or update
+  let product: ProductNode | null = null;
+  if (found.productByHandle?.id) {
+    const updateInput: ProductUpdateInput = { id: found.productByHandle.id, ...productBase };
+    const upd = await gql<ProductUpdateMutation>(PRODUCT_UPDATE, { product: updateInput });
+    if (upd.productUpdate.userErrors.length) {
+      throw new Error(`productUpdate userErrors: ${JSON.stringify(upd.productUpdate.userErrors)}`);
     }
-
-    // 1) Handle
-    const handle = makeHandleFromSlugOrName(p.slug, p.name);
-
-    // 2) Lookup existing product
-    const found = await gql<FindByHandleQuery>(FIND_BY_HANDLE, { handle });
-
-    // 3) Build product payload (no variants inline)
-    const productBase: ProductCreateInput = {
-        title: p.name,
-        handle,
-        descriptionHtml: p.description || "",
-        productType: p.category || "uncategorized",
-        status: p.is_active && p.is_public ? "ACTIVE" : "DRAFT",
-        tags: buildTags(p),
-    };
-
-    // 4) Create or update
-    let product: ProductNode | null = null;
-    if (found.productByHandle?.id) {
-        const updateInput: ProductUpdateInput = { id: found.productByHandle.id, ...productBase };
-        const upd = await gql<ProductUpdateMutation>(PRODUCT_UPDATE, { product: updateInput });
-        if (upd.productUpdate.userErrors.length) {
-            throw new Error(`productUpdate userErrors: ${JSON.stringify(upd.productUpdate.userErrors)}`);
-        }
-        product = upd.productUpdate.product;
-    } else {
-        const crt = await gql<ProductCreateMutation>(PRODUCT_CREATE, { product: productBase });
-        if (crt.productCreate.userErrors.length) {
-            throw new Error(`productCreate userErrors: ${JSON.stringify(crt.productCreate.userErrors)}`);
-        }
-        product = crt.productCreate.product;
+    product = upd.productUpdate.product;
+  } else {
+    const crt = await gql<ProductCreateMutation>(PRODUCT_CREATE, { product: productBase });
+    if (crt.productCreate.userErrors.length) {
+      throw new Error(`productCreate userErrors: ${JSON.stringify(crt.productCreate.userErrors)}`);
     }
+    product = crt.productCreate.product;
+  }
+  if (!product) throw new Error("Product create/update returned null product.");
 
-    if (!product) throw new Error("Product create/update returned null product.");
+  const defaultVariant = product.variants.nodes[0];
+  if (!defaultVariant) throw new Error("No default variant found after create/update.");
+  const defaultVariantId = defaultVariant.id;
+  const inventoryItemId = defaultVariant.inventoryItem.id;
 
-    const defaultVariant = product.variants.nodes[0];
-    if (!defaultVariant) throw new Error("No default variant found after create/update.");
-    const defaultVariantId = defaultVariant.id;
-    const inventoryItemId = defaultVariant.inventoryItem.id;
+  // 5) Price + SKU (bulk update supports these)
+  const bulk = await gql<ProductVariantsBulkUpdateMutation>(PRODUCT_VARIANTS_BULK_UPDATE, {
+    productId: product.id,
+    variants: [
+      {
+        id: defaultVariantId,
+        price: dollars(p.price),
+        inventoryItem: { sku: p.sku || "" },
+      },
+    ],
+  });
+  if (bulk.productVariantsBulkUpdate.userErrors.length) {
+    throw new Error(
+      `productVariantsBulkUpdate userErrors: ${JSON.stringify(
+        bulk.productVariantsBulkUpdate.userErrors
+      )}`
+    );
+  }
 
-    // 5) Update default variant (price) + inventory item (sku)
+  // 6) Weight lives on InventoryItem → set measurement.weight here
+  try {
     const grams = Math.max(p.weight || 0, 0);
-
-    if (grams > 0) {
-        const vupd = await gql<ProductVariantUpdateMutation>(PRODUCT_VARIANT_UPDATE, {
-            input: {
-                id: defaultVariantId,
-                weight: grams,        // number
-                weightUnit: "GRAMS",  // "GRAMS" | "KILOGRAMS" | "OUNCES" | "POUNDS"
-            },
-        });
-        if (vupd.productVariantUpdate.userErrors.length) {
-            throw new Error(`productVariantUpdate userErrors: ${JSON.stringify(vupd.productVariantUpdate.userErrors)}`);
-        }
-    }
-
-    // (Optional) Ensure inventory item flags; not all API versions support tracked here
-    try {
-        const invUpd = await gql<InventoryItemUpdateMutation>(INVENTORY_ITEM_UPDATE, {
-            id: inventoryItemId,
-            input: { sku: p.sku || "" },
-        });
-        if (invUpd.inventoryItemUpdate.userErrors.length) {
-            // non-fatal for POC
-        }
-    } catch {
-        // ignore optional step failures
-    }
-
-    // 5b) Attach an image from a URL (if provided)
-    if (p.image) {
-        try {
-            const mediaRes = await gql<ProductCreateMediaMutation>(PRODUCT_CREATE_MEDIA, {
-                productId: product.id,
-                media: [
-                    {
-                        originalSource: p.image,
-                        alt: p.name,
-                        mediaContentType: "IMAGE",
-                    },
-                ],
-            });
-            if (mediaRes.productCreateMedia.mediaUserErrors?.length) {
-                // non-fatal
-                console.warn("productCreateMedia errors:", mediaRes.productCreateMedia.mediaUserErrors);
-            }
-        } catch {
-            // non-fatal
-        }
-    }
-
-
-    // 6) Activate at location (creates InventoryLevel if missing)
-    const initialQty = p.is_outofstock ? 0 : 10;
-    try {
-        const act = await gql<InventoryActivateMutation>(INVENTORY_ACTIVATE, {
-            inventoryItemId,
-            locationId: LOCATION_ID,
-            available: initialQty,
-        });
-        if (act.inventoryActivate.userErrors.length) {
-            // not fatal; we will still set absolute quantity
-        }
-    } catch {
-        // ignore; activation isn't required on all stores/versions
-    }
-
-    // 7) Set absolute quantity
-    const set = await gql<InventorySetQuantitiesMutation>(INVENTORY_SET, {
-        input: {
-            reason: "correction",
-            name: "available",
-            ignoreCompareQuantity: true,
-            quantities: [
-                {
-                    inventoryItemId,
-                    locationId: LOCATION_ID,
-                    quantity: p.is_outofstock ? 0 : 10,
-                    // compareQuantity: 0
-                },
-            ],
-        },
+    const invUpd = await gql<InventoryItemUpdateMutation>(INVENTORY_ITEM_UPDATE, {
+      id: inventoryItemId,
+      input: {
+        sku: p.sku || "",
+        measurement: grams > 0 ? { weight: { value: grams, unit: "GRAMS" } } : undefined,
+      },
     });
-
-
-    if (set.inventorySetQuantities.userErrors.length) {
-        throw new Error(
-            `inventorySetQuantities userErrors: ${JSON.stringify(
-                set.inventorySetQuantities.userErrors
-            )}`
-        );
+    if (invUpd.inventoryItemUpdate.userErrors.length) {
+      // non-fatal for POC
     }
+  } catch {
+    // swallow optional step failures
+  }
 
-    // 8) Metafields (typed; requires definitions under namespace "custom")
-    await gql(METAFIELDS_SET, {
-        metafields: [
-            { ownerId: product.id, namespace: "custom", key: "gst", type: "boolean", value: String(Boolean(p.gst)) },
-            { ownerId: product.id, namespace: "custom", key: "badge_text", type: "single_line_text_field", value: p.badge_text || "" },
-            { ownerId: product.id, namespace: "custom", key: "badge_color", type: "single_line_text_field", value: p.badge_color || "" },
-            { ownerId: product.id, namespace: "custom", key: "cooking_method", type: "single_line_text_field", value: p.cooking_method || "" },
-            { ownerId: product.id, namespace: "custom", key: "description_text", type: "multi_line_text_field", value: p.description_text || "" },
-        ],
+  // 7) Attach image if present (must be direct, public HTTPS URL)
+  if (p.image) {
+    try {
+      const mediaRes = await gql<ProductCreateMediaMutation>(PRODUCT_CREATE_MEDIA, {
+        productId: product.id,
+        media: [{ originalSource: p.image, alt: p.name, mediaContentType: "IMAGE" }],
+      });
+      if (mediaRes.productCreateMedia.mediaUserErrors?.length) {
+        // non-fatal; just log if needed
+        // console.warn("productCreateMedia errors:", mediaRes.productCreateMedia.mediaUserErrors);
+      }
+    } catch {
+      // non-fatal
+    }
+  }
+
+  // 8) Ensure stock level
+  const initialQty = p.is_outofstock ? 0 : 10;
+  try {
+    const act = await gql<InventoryActivateMutation>(INVENTORY_ACTIVATE, {
+      inventoryItemId,
+      locationId: LOCATION_ID,
+      available: initialQty,
     });
+    if (act.inventoryActivate.userErrors.length) {
+      // not fatal
+    }
+  } catch {
+    // not required on all stores
+  }
 
+  const set = await gql<InventorySetQuantitiesMutation>(INVENTORY_SET, {
+    input: {
+      reason: "correction",
+      name: "available",
+      ignoreCompareQuantity: true,
+      quantities: [{ inventoryItemId, locationId: LOCATION_ID, quantity: initialQty }],
+    },
+  });
+  if (set.inventorySetQuantities.userErrors.length) {
+    throw new Error(
+      `inventorySetQuantities userErrors: ${JSON.stringify(
+        set.inventorySetQuantities.userErrors
+      )}`
+    );
+  }
+
+  // 9) Metafields (typed; defs must exist under namespace "custom")
+  await gql(METAFIELDS_SET, {
+    metafields: [
+      {
+        ownerId: product.id,
+        namespace: "custom",
+        key: "gst",
+        type: "boolean",
+        value: String(Boolean(p.gst)),
+      },
+      {
+        ownerId: product.id,
+        namespace: "custom",
+        key: "badge_text",
+        type: "single_line_text_field",
+        value: p.badge_text || "",
+      },
+      {
+        ownerId: product.id,
+        namespace: "custom",
+        key: "badge_color",
+        type: "single_line_text_field",
+        value: p.badge_color || "",
+      },
+      {
+        ownerId: product.id,
+        namespace: "custom",
+        key: "cooking_method",
+        type: "single_line_text_field",
+        value: p.cooking_method || "",
+      },
+      {
+        ownerId: product.id,
+        namespace: "custom",
+        key: "description_text",
+        type: "multi_line_text_field",
+        value: p.description_text || "",
+      },
+    ],
+  });
 }
 
 /** ------------ POST handler ------------ */
 export async function POST(req: Request) {
-    try {
-        const url = new URL(req.url);
-        const src = url.searchParams.get("src") || DEFAULT_SRC;
+  try {
+    const url = new URL(req.url);
+    const src = url.searchParams.get("src") || DEFAULT_SRC;
 
-        const r = await fetch(src, { cache: "no-store" });
-        const data = (await r.json()) as SourceResponse;
+    const r = await fetch(src, { cache: "no-store" });
+    const data = (await r.json()) as SourceResponse;
 
-        if (!r.ok || !data?.results) {
-            return NextResponse.json(
-                { error: "Bad upstream response", from: src },
-                { status: 502, headers: { "Access-Control-Allow-Origin": "*" } }
-            );
-        }
-
-        const results: Array<{ name: string; ok: boolean; error?: string }> = [];
-
-        for (const p of data.results) {
-            try {
-                await upsertOne(p);
-                results.push({ name: p.name, ok: true });
-            } catch (err: unknown) {
-                results.push({ name: p.name, ok: false, error: asErrorMessage(err) });
-            }
-        }
-
-        return NextResponse.json(
-            { imported: results.filter((x) => x.ok).length, results },
-            { headers: { "Access-Control-Allow-Origin": "*" } }
-        );
-    } catch (err: unknown) {
-        return NextResponse.json(
-            { error: asErrorMessage(err) },
-            { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
-        );
+    if (!r.ok || !data?.results) {
+      return NextResponse.json(
+        { error: "Bad upstream response", from: src },
+        { status: 502, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
     }
+
+    const results: Array<{ name: string; ok: boolean; error?: string }> = [];
+
+    for (const p of data.results) {
+      try {
+        await upsertOne(p);
+        results.push({ name: p.name, ok: true });
+      } catch (err: unknown) {
+        results.push({ name: p.name, ok: false, error: asErrorMessage(err) });
+      }
+    }
+
+    return NextResponse.json(
+      { imported: results.filter((x) => x.ok).length, results },
+      { headers: { "Access-Control-Allow-Origin": "*" } }
+    );
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: asErrorMessage(err) },
+      { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+    );
+  }
 }
