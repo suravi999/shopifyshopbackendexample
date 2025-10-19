@@ -23,7 +23,7 @@ mutation CartLinesAdd($cartId: ID!, $lines: [CartLineInput!]!) {
 `;
 
 // generic storefront fetch using the PUBLIC token (safe in browser)
-async function storefront<T = unknown>(query: string, variables: Record<string, unknown>) {
+async function storefront<T = unknown>(query: string, variables: Record<string, any>) {
   const res = await fetch(getStorefrontClient().getStorefrontApiUrl(), {
     method: 'POST',
     headers: getStorefrontClient().getPublicTokenHeaders(),
@@ -46,11 +46,11 @@ export async function addToCartAndCheckout(variantId: string, quantity = 1) {
   try {
     cartId = localStorage.getItem(CART_KEY) ?? undefined;
   } catch {
-    // SSR or blocked storage; just create a fresh cart
+    // SSR or blocked storage. just create a fresh cart
   }
 
   if (!cartId) {
-    const data: unknown = await storefront(CART_CREATE, {
+    const data: any = await storefront(CART_CREATE, {
       lines: [{ merchandiseId: variantId, quantity }],
     });
     const cart = data?.data?.cartCreate?.cart;
@@ -60,13 +60,13 @@ export async function addToCartAndCheckout(variantId: string, quantity = 1) {
     return;
   }
 
-  const data: unknown = await storefront(CART_LINES_ADD, {
+  const data: any = await storefront(CART_LINES_ADD, {
     cartId,
     lines: [{ merchandiseId: variantId, quantity }],
   });
   const cart = data?.data?.cartLinesAdd?.cart;
   if (!cart) {
-    // stored cart probably invalid; clear and retry once
+    // stored cart probably invalid. clear and retry once
     try { localStorage.removeItem(CART_KEY); } catch {}
     return addToCartAndCheckout(variantId, quantity);
   }

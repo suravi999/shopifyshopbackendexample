@@ -46,7 +46,7 @@ const PRODUCTS_QUERY = `#graphql
 `;
 
 export default function Page() {
-  const [items, setItems] = useState<unknown[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function Page() {
           return;
         }
 
-        const nodes = (json.data?.products?.edges ?? []).map((e: unknown) => e.node);
+        const nodes = (json.data?.products?.edges ?? []).map((e: any) => e.node);
         if (mounted) setItems(nodes);
       } catch (err) {
         console.error('Fetch error:', err);
