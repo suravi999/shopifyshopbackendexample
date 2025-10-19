@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getStorefrontClient } from '@/lib/shopify';
 import ProductGrid from '@/components/ProductGrid';
 import './globals.css';
 
@@ -54,9 +53,9 @@ export default function Page() {
 
     async function loadProducts() {
       try {
-        const res = await fetch(getStorefrontClient().getStorefrontApiUrl(), {
+        const res = await fetch('/api/storefront-products', {
           method: 'POST',
-          headers: getStorefrontClient().getPublicTokenHeaders(),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: PRODUCTS_QUERY, variables: { first: 12 } }),
         });
 
