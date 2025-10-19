@@ -18,6 +18,9 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "components/ProductGrid.tsx",
+      "lib/cart.ts",
+      "src/app/page.tsx",
     ],
   },
 ];

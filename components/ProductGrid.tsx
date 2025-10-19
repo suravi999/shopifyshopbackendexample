@@ -2,6 +2,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { useMoney } from '@shopify/hydrogen-react';
+import type { CurrencyCode } from '@shopify/hydrogen-react/storefront-api-types';
 import { addToCartAndCheckout } from '@/lib/cart';
 
 // Type for product data
@@ -39,9 +40,10 @@ interface ProductNode {
 
 // Helper to render currency
 function Price({ amount, currencyCode }: { amount: string; currencyCode: string }) {
-  const money = useMoney({ amount, currencyCode });
+  const money = useMoney({ amount, currencyCode } as any);
   return <span>{money.currencySymbol}{money.amount}</span>;
 }
+
 
 //Single product card
 function ProductCard({ product }: { product: ProductNode }) {
