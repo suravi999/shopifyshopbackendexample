@@ -1,10 +1,13 @@
 import "dotenv/config";
+import {createStorefrontClient} from '@shopify/hydrogen-react';
+import {publicStorefrontToken, storeDomain} from './default';
 
 const SHOP = process.env.SHOPIFY_SHOP!;
 const TOKEN = process.env.SHOPIFY_ADMIN_TOKEN!;
+const SF = process.env.SHOPIFY_P_STOREFRONT_API_TOKEN!;
 const API_VERSION = process.env.SHOPIFY_API_VERSION ?? "2024-10";
 
-if (!SHOP || !TOKEN) {
+if (typeof window === "undefined" && (!SHOP || !TOKEN))  {
   throw new Error("Missing SHOPIFY_SHOP or SHOPIFY_ADMIN_TOKEN");
 }
 
@@ -56,4 +59,11 @@ export function buildTags(p: {
   if (p.free_delivery) set.add("free_delivery");
   if (p.card_layout === "DOUBLED") set.add("double_card");
   return Array.from(set);
+}
+
+export function getStorefrontClient() {
+  return createStorefrontClient({
+    storeDomain: storeDomain,
+    publicStorefrontToken: publicStorefrontToken,
+  });
 }
